@@ -64,7 +64,7 @@ def run_phase5_tests():
     sol_full_re_solve = orchestrator.solve(problem)
     full_re_solve_time = (time.time() - t0) * 1000.0
 
-    # Benchmark Method B: Proposed Dynamic Local QAOA Re-Optimization
+    # Benchmark Method B: Proposed Dynamic Local Exact-Cluster Re-Optimization
     t0 = time.time()
     sol_local_reopt = orchestrator.reoptimize_dynamic_traffic(affected_edges)
     local_reopt_time = (time.time() - t0) * 1000.0
@@ -74,7 +74,7 @@ def run_phase5_tests():
     print("-" * 65)
     print(f"{'Full Network Re-Solve':<30} | {full_re_solve_time:<13.1f} ms | 1.0x (Baseline)")
     speedup = full_re_solve_time / max(0.1, local_reopt_time)
-    print(f"{'Local QAOA Re-Optimization':<30} | {local_reopt_time:<13.1f} ms | {speedup:<8.2f}x Faster")
+    print(f"{'Local Exact-Cluster Re-Optimization':<30} | {local_reopt_time:<13.1f} ms | {speedup:<8.2f}x Faster")
     print("-" * 65)
 
     print("\nDynamic Re-Optimization Metrics:")

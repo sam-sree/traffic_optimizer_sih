@@ -4,7 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 export default function ConvergenceChart({ solution }) {
   const curveData = solution?.convergence_curve?.map((cost, iter) => ({
     iteration: iter + 1,
-    'Proposed Hybrid QPSO+QAOA': cost,
+    'Proposed Hybrid QPSO+Exact': cost,
     'Plain QPSO': cost * (1 + 0.12 * Math.exp(-iter / 30)),
     'Genetic Algorithm (GA)': cost * (1 + 0.25 * Math.exp(-iter / 45)),
     'Ant Colony Optimization': cost * (1 + 0.18 * Math.exp(-iter / 25))
@@ -28,7 +28,7 @@ export default function ConvergenceChart({ solution }) {
               <YAxis stroke="#a89a9c" label={{ value: 'Best Cost Metric', angle: -90, position: 'insideLeft', fill: '#a89a9c' }} />
               <Tooltip contentStyle={{ backgroundColor: '#180d10', borderColor: '#3f1922', borderRadius: '8px', color: '#fcf8f8' }} />
               <Legend verticalAlign="top" height={36} />
-              <Line type="monotone" dataKey="Proposed Hybrid QPSO+QAOA" stroke="#ef4444" strokeWidth={3} dot={false} />
+              <Line type="monotone" dataKey="Proposed Hybrid QPSO+Exact" stroke="#ef4444" strokeWidth={3} dot={false} />
               <Line type="monotone" dataKey="Plain QPSO" stroke="#f97316" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="Genetic Algorithm (GA)" stroke="#f59e0b" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="Ant Colony Optimization" stroke="#fb7185" strokeWidth={2} dot={false} />

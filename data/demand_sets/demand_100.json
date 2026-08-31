@@ -2,7 +2,7 @@
   "instance_name": "bengaluru_100",
   "num_nodes": 100,
   "depot_node": 0,
-  "num_vehicles": 20,
+  "num_vehicles": 26,
   "vehicle_capacity": 80.0,
   "customers": [
     {

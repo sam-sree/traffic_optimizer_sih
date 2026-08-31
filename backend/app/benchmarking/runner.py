@@ -70,7 +70,7 @@ class BenchmarkRunner:
 
     def _evaluate_instance(self, problem: RoutingProblem, size: int) -> Dict[str, Any]:
         algorithms = [
-            ("Hybrid QPSO + QAOA-Cluster", True),
+            ("Hybrid QPSO + Exact-Cluster", True),
             ("Quantum-Inspired PSO (QPSO)", True),
             ("Genetic Algorithm (GA)", True),
             ("Ant Colony Optimization (ACO)", True),
@@ -131,14 +131,19 @@ class BenchmarkRunner:
         return instance_summary
 
     def _instantiate_solver(self, alg_name: str, seed: int, size: int):
-        if alg_name == "Hybrid QPSO + QAOA-Cluster":
-            return HybridQuantumOrchestrator(max_cluster_size=10, qpso_particles=25, qpso_iterations=60, seed=seed)
+        # Search budget must scale with problem size (search-space dimensionality
+        # grows with the number of customers) - fixed budgets starve larger instances.
+        particles = max(30, size)
+        iterations = max(70, size * 2)
+
+        if alg_name == "Hybrid QPSO + Exact-Cluster":
+            return HybridQuantumOrchestrator(max_cluster_size=10, qpso_particles=max(25, size), qpso_iterations=max(60, size * 2), seed=seed)
         elif alg_name == "Quantum-Inspired PSO (QPSO)":
-            return QPSOSolver(num_particles=30, max_iterations=70, seed=seed)
+            return QPSOSolver(num_particles=particles, max_iterations=iterations, seed=seed)
         elif alg_name == "Genetic Algorithm (GA)":
-            return GASolver(pop_size=30, generations=70, seed=seed)
+            return GASolver(pop_size=particles, generations=iterations, seed=seed)
         elif alg_name == "Ant Colony Optimization (ACO)":
-            return ACOSolver(num_ants=20, iterations=60, seed=seed)
+            return ACOSolver(num_ants=max(20, size // 2), iterations=iterations, seed=seed)
         elif alg_name == "Google OR-Tools CVRPTW":
             return ORToolsSolver(time_limit_sec=1.5)
         elif alg_name == "Dijkstra Nearest-Neighbor":

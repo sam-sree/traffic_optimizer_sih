@@ -20,7 +20,7 @@ export default function App() {
 
     // Run default initial solve
     handleSolve({
-      solver_name: 'Hybrid QPSO + QAOA-Cluster',
+      solver_name: 'Hybrid QPSO + Exact-Cluster',
       num_nodes: 25,
       num_vehicles: 5,
       vehicle_capacity: 65.0,

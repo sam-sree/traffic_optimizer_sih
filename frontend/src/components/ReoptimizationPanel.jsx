@@ -25,7 +25,7 @@ export default function ReoptimizationPanel() {
           <Zap size={18} color="#f97316" /> Dynamic Traffic Incident Simulation
         </h2>
         <p style={{ fontSize: '0.85rem', color: '#a89a9c' }}>
-          Simulates dynamic traffic disruptions (5.5x travel time delay) mid-route to evaluate local QAOA cluster re-solving vs full-network re-computation.
+          Simulates dynamic traffic disruptions (5.5x travel time delay) mid-route to evaluate local exact-cluster re-solving vs full-network re-computation.
         </p>
 
         <button
@@ -48,7 +48,7 @@ export default function ReoptimizationPanel() {
                 <p style={{ fontSize: '1.4rem', fontWeight: 700, color: '#ef4444' }}>{data.full_resolve_time_ms.toFixed(1)} ms</p>
               </div>
               <div style={{ background: '#180d10', padding: '16px', borderRadius: '10px', border: '1px solid #3f1922' }}>
-                <span style={{ fontSize: '0.8rem', color: '#a89a9c' }}>Local QAOA Re-Solve</span>
+                <span style={{ fontSize: '0.8rem', color: '#a89a9c' }}>Local Re-Solve</span>
                 <p style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f97316' }}>{data.local_reopt_time_ms.toFixed(1)} ms</p>
               </div>
               <div style={{ background: '#180d10', padding: '16px', borderRadius: '10px', border: '1px solid #3f1922' }}>
