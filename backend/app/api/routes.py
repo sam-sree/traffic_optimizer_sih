@@ -14,6 +14,7 @@ from backend.app.solvers.classical.aco_solver import ACOSolver
 from backend.app.solvers.qpso.qpso_solver import QPSOSolver
 from backend.app.solvers.qpso.moqpso_solver import MOQPSOSolver
 from backend.app.solvers.hybrid_orchestrator import HybridQuantumOrchestrator
+from backend.app.solvers.cost_translation import compute_real_world_cost, compute_savings_vs_baseline
 from backend.app.api.schemas import SolveRequest, IncidentRequest, ReoptimizeRequest
 
 router = APIRouter(prefix="/api")
@@ -91,6 +92,20 @@ def solve_routing_problem(req: SolveRequest):
     else:
         sol = orchestrator.solve(problem)
 
+    # Real-world (rupee) cost translation, and savings vs. an "unoptimized"
+    # baseline (naive nearest-neighbor) - see cost_translation.py for the
+    # stated assumptions behind the conversion factors used here.
+    cost_inr = compute_real_world_cost(sol.total_time_sec, sol.total_distance_m)
+    savings_vs_baseline = None
+    if req.solver_name != "Dijkstra Nearest-Neighbor":
+        baseline_sol = ShortestPathSolver(use_astar=False).solve(problem)
+        savings_vs_baseline = compute_savings_vs_baseline(
+            optimized_time_sec=sol.total_time_sec,
+            optimized_distance_m=sol.total_distance_m,
+            baseline_time_sec=baseline_sol.total_time_sec,
+            baseline_distance_m=baseline_sol.total_distance_m,
+        )
+
     routes_payload = []
     for r in sol.routes:
         coords = []
@@ -114,6 +129,8 @@ def solve_routing_problem(req: SolveRequest):
         "solver_name": sol.solver_name,
         "is_feasible": sol.is_feasible,
         "total_cost": sol.total_cost,
+        "cost_inr": cost_inr,
+        "savings_vs_baseline": savings_vs_baseline,
         "total_time_min": sol.total_time_sec / 60.0,
         "total_distance_km": sol.total_distance_m / 1000.0,
         "total_congestion": sol.total_congestion_cost,
