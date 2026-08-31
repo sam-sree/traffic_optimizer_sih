@@ -144,6 +144,46 @@ export default function MapView({ graphData, solution, onSolve, loading }) {
               </div>
             )}
 
+            {solution.sla_report && (
+              <div style={{ marginTop: '12px', borderTop: '1px solid #3f1922', paddingTop: '10px' }}>
+                <span style={{ fontSize: '0.78rem', color: '#a89a9c', display: 'block', marginBottom: '6px' }}>
+                  On-Time Delivery (SLA)
+                </span>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <p style={{
+                    fontWeight: 700,
+                    fontSize: '1.3rem',
+                    color: solution.sla_report.on_time_rate_pct >= 95 ? '#22c55e' : solution.sla_report.on_time_rate_pct >= 80 ? '#f97316' : '#ef4444'
+                  }}>
+                    {solution.sla_report.on_time_rate_pct.toFixed(1)}%
+                  </p>
+                  <span style={{ fontSize: '0.75rem', color: '#a89a9c' }}>
+                    {solution.sla_report.on_time_count}/{solution.sla_report.total_customers} on time
+                  </span>
+                </div>
+                {solution.sla_report.late_count > 0 && (
+                  <p style={{ fontSize: '0.72rem', color: '#a89a9c', marginTop: '2px' }}>
+                    Avg. lateness (when late): {solution.sla_report.avg_lateness_min_when_late.toFixed(1)} min
+                  </p>
+                )}
+              </div>
+            )}
+
+            {solution.sustainability && (
+              <div style={{ marginTop: '12px', borderTop: '1px solid #3f1922', paddingTop: '10px' }}>
+                <span style={{ fontSize: '0.78rem', color: '#a89a9c', display: 'block', marginBottom: '6px' }}>
+                  Fleet-Scale Sustainability Impact (projected)
+                </span>
+                <p style={{ fontWeight: 700, color: '#22c55e', fontSize: '1.1rem' }}>
+                  {solution.sustainability.annual_co2_saved_tons.toFixed(1)} tons CO₂/year saved
+                </p>
+                <p style={{ fontSize: '0.68rem', color: '#6b6062', marginTop: '4px' }}>
+                  Projected at a {solution.sustainability.assumptions.target_fleet_size}-vehicle fleet operating
+                  {' '}{solution.sustainability.assumptions.operating_days_per_year} days/year - a stated projection, not a measured result.
+                </p>
+              </div>
+            )}
+
             {/* Vehicle legend */}
             <div style={{ marginTop: '12px', borderTop: '1px solid #3f1922', paddingTop: '10px' }}>
               <span style={{ fontSize: '0.78rem', color: '#a89a9c', display: 'block', marginBottom: '6px' }}>Vehicle Route Legend:</span>
@@ -152,6 +192,11 @@ export default function MapView({ graphData, solution, onSolve, loading }) {
                   <div key={`legend-${rIdx}`} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: '#0d0608', padding: '3px 8px', borderRadius: '4px' }}>
                     <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: VEHICLE_COLORS[rIdx % VEHICLE_COLORS.length] }} />
                     <span>Veh #{route.vehicle_id + 1}</span>
+                    {route.maps_url && (
+                      <a href={route.maps_url} target="_blank" rel="noopener noreferrer" style={{ color: '#f97316', textDecoration: 'none', marginLeft: '2px' }} title="Open this route in Google Maps">
+                        ↗
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>

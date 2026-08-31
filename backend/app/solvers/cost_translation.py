@@ -90,3 +90,38 @@ def compute_savings_vs_baseline(
         "savings_pct": round(savings_pct, 1),
         "assumptions": optimized["assumptions"],
     }
+
+
+def compute_fleet_scale_emissions(
+    total_emissions_co2_g: float,
+    num_vehicles_used: int,
+    target_fleet_size: int = 500,
+    operating_days_per_year: int = 300,
+) -> dict:
+    """
+    Extrapolates this solved instance's per-vehicle emissions to an annual,
+    fleet-scale estimate. This is a stated projection built on two explicit
+    assumptions (target_fleet_size, operating_days_per_year), not a measured
+    or guaranteed outcome - presented as "if deployed at X vehicles for Y
+    days/year", not as a claimed real-world result.
+    """
+    if num_vehicles_used <= 0:
+        return {
+            "annual_co2_tons": 0.0,
+            "assumptions": {
+                "target_fleet_size": target_fleet_size,
+                "operating_days_per_year": operating_days_per_year,
+            },
+        }
+
+    per_vehicle_emissions_g = total_emissions_co2_g / num_vehicles_used
+    annual_emissions_g = per_vehicle_emissions_g * target_fleet_size * operating_days_per_year
+    annual_emissions_tons = annual_emissions_g / 1_000_000.0
+
+    return {
+        "annual_co2_tons": round(annual_emissions_tons, 2),
+        "assumptions": {
+            "target_fleet_size": target_fleet_size,
+            "operating_days_per_year": operating_days_per_year,
+        },
+    }

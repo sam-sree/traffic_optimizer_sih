@@ -14,7 +14,9 @@ from backend.app.solvers.classical.aco_solver import ACOSolver
 from backend.app.solvers.qpso.qpso_solver import QPSOSolver
 from backend.app.solvers.qpso.moqpso_solver import MOQPSOSolver
 from backend.app.solvers.hybrid_orchestrator import HybridQuantumOrchestrator
-from backend.app.solvers.cost_translation import compute_real_world_cost, compute_savings_vs_baseline
+from backend.app.solvers.cost_translation import compute_real_world_cost, compute_savings_vs_baseline, compute_fleet_scale_emissions
+from backend.app.solvers.sla_compliance import compute_solution_sla
+from backend.app.solvers.maps_export import build_google_maps_url
 from backend.app.api.schemas import SolveRequest, IncidentRequest, ReoptimizeRequest
 
 router = APIRouter(prefix="/api")
@@ -97,6 +99,7 @@ def solve_routing_problem(req: SolveRequest):
     # stated assumptions behind the conversion factors used here.
     cost_inr = compute_real_world_cost(sol.total_time_sec, sol.total_distance_m)
     savings_vs_baseline = None
+    sustainability = None
     if req.solver_name != "Dijkstra Nearest-Neighbor":
         baseline_sol = ShortestPathSolver(use_astar=False).solve(problem)
         savings_vs_baseline = compute_savings_vs_baseline(
@@ -105,6 +108,18 @@ def solve_routing_problem(req: SolveRequest):
             baseline_time_sec=baseline_sol.total_time_sec,
             baseline_distance_m=baseline_sol.total_distance_m,
         )
+        opt_emissions = compute_fleet_scale_emissions(sol.total_emissions_co2_g, max(1, len(sol.routes)))
+        base_emissions = compute_fleet_scale_emissions(baseline_sol.total_emissions_co2_g, max(1, len(baseline_sol.routes)))
+        sustainability = {
+            "optimized_annual_co2_tons": opt_emissions["annual_co2_tons"],
+            "baseline_annual_co2_tons": base_emissions["annual_co2_tons"],
+            "annual_co2_saved_tons": round(base_emissions["annual_co2_tons"] - opt_emissions["annual_co2_tons"], 2),
+            "assumptions": opt_emissions["assumptions"],
+        }
+
+    # On-time delivery / SLA compliance - see sla_compliance.py for the
+    # simplifying assumption this rests on (common depot departure time).
+    sla_report = compute_solution_sla(sol)
 
     routes_payload = []
     for r in sol.routes:
@@ -122,7 +137,8 @@ def solve_routing_problem(req: SolveRequest):
             "total_distance_km": r.total_distance_m / 1000.0,
             "total_congestion": r.total_congestion_cost,
             "total_emissions_co2_g": r.total_emissions_co2_g,
-            "feasible": r.feasible
+            "feasible": r.feasible,
+            "maps_url": build_google_maps_url(r, G, depot_node)
         })
 
     return {
@@ -131,6 +147,8 @@ def solve_routing_problem(req: SolveRequest):
         "total_cost": sol.total_cost,
         "cost_inr": cost_inr,
         "savings_vs_baseline": savings_vs_baseline,
+        "sustainability": sustainability,
+        "sla_report": sla_report,
         "total_time_min": sol.total_time_sec / 60.0,
         "total_distance_km": sol.total_distance_m / 1000.0,
         "total_congestion": sol.total_congestion_cost,
