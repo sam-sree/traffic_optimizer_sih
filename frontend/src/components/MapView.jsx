@@ -16,7 +16,7 @@ const VEHICLE_COLORS = [
 ];
 
 export default function MapView({ graphData, solution, onSolve, loading }) {
-  const [selectedSolver, setSelectedSolver] = useState('Hybrid QPSO + QAOA-Cluster');
+  const [selectedSolver, setSelectedSolver] = useState('Hybrid QPSO + Exact-Cluster');
   const [numNodes, setNumNodes] = useState(25);
   const [numVehicles, setNumVehicles] = useState(5);
 
@@ -48,7 +48,7 @@ export default function MapView({ graphData, solution, onSolve, loading }) {
             onChange={(e) => setSelectedSolver(e.target.value)}
             style={{ width: '100%', background: '#180d10', color: '#fcf8f8', border: '1px solid #3f1922', padding: '10px', borderRadius: '8px', fontSize: '0.88rem' }}
           >
-            <option value="Hybrid QPSO + QAOA-Cluster">Hybrid QPSO + QAOA-Cluster (Proposed)</option>
+            <option value="Hybrid QPSO + Exact-Cluster">Hybrid QPSO + Exact-Cluster (Proposed)</option>
             <option value="Quantum-Inspired PSO (QPSO)">Plain QPSO Baseline</option>
             <option value="Genetic Algorithm (GA)">Genetic Algorithm (GA)</option>
             <option value="Ant Colony Optimization (ACO)">Ant Colony Optimization (ACO)</option>

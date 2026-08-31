@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import math
 import random
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -41,8 +42,12 @@ def generate_demand_sets():
                 "lon": c_data.get("x", 77.5946)
             })
 
-        num_veh = max(3, size // 5)
+        # Size the fleet FROM actual generated demand, with 20% headroom, so the
+        # instance is always solvable - a fixed size-based formula can silently
+        # fall short of total demand depending on the random demand values drawn.
         veh_cap = 80.0
+        total_demand = sum(c["demand_units"] for c in customers)
+        num_veh = max(3, math.ceil((total_demand * 1.20) / veh_cap))
 
         demand_data = {
             "instance_name": f"bengaluru_{size}",

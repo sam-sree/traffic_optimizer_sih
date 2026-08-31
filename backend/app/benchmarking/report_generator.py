@@ -64,8 +64,8 @@ def generate_benchmark_reports(suite_results: Dict[str, Any]):
             f.write("\n")
 
         f.write("## Key Architectural Findings\n")
-        f.write("1. **Quantum Sub-Solver Scalability**: Intra-cluster QAOA sub-tours remain tractable (<= 12-15 qubits) with automatic Held-Karp exact fallback for guaranteed convergence.\n")
-        f.write("2. **Dynamic Re-Optimization Advantage**: Local QAOA re-solves on dynamic traffic disruptions achieve up to **1.5x - 3.0x speedups** compared to full-network re-computation.\n")
-        f.write("3. **Solution Quality**: QPSO global route stitching matches OR-Tools solution quality while executing with lower wall-clock latency on medium-to-large node sizes.\n")
+        f.write("1. **Cluster Sub-Solver**: Intra-cluster sub-tours are solved exactly via Held-Karp dynamic programming, which is tractable at the cluster sizes used here (<= 10-12 nodes) and guarantees the optimal sub-tour for each cluster.\n")
+        f.write("2. **Dynamic Re-Optimization**: Local re-solving affected clusters only (instead of the full network) after a traffic disruption is architecturally faster than a full re-solve, since unaffected clusters keep their cached sub-tours - see the reoptimize benchmark for measured speedup on a specific run.\n")
+        f.write("3. **Solution Quality**: See the tables above for how each algorithm's solution quality and runtime actually compare at each problem scale - results vary by scale and are reported as measured, not assumed.\n")
 
     print(f"[ReportGenerator] Generated benchmark Markdown report at: {md_path}")

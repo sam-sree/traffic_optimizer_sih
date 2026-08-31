@@ -76,7 +76,7 @@ def solve_routing_problem(req: SolveRequest):
         objective_weights=req.objective_weights
     )
 
-    if req.solver_name == "Hybrid QPSO + QAOA-Cluster":
+    if req.solver_name == "Hybrid QPSO + Exact-Cluster":
         sol = orchestrator.solve(problem)
     elif req.solver_name == "Quantum-Inspired PSO (QPSO)":
         sol = QPSOSolver(num_particles=40, max_iterations=100, seed=42).solve(problem)
@@ -126,7 +126,7 @@ def solve_routing_problem(req: SolveRequest):
 
 @router.post("/reoptimize")
 def reoptimize_traffic(req: ReoptimizeRequest):
-    """Executes dynamic real-time local QAOA re-optimization vs full re-solve comparison."""
+    """Executes dynamic real-time local exact-cluster re-optimization vs full re-solve comparison."""
     if req.affected_edges:
         affected = [tuple(e) for e in req.affected_edges]
         for u, v in affected:
@@ -150,7 +150,7 @@ def reoptimize_traffic(req: ReoptimizeRequest):
     sol_full = orchestrator.solve(orchestrator.last_problem)
     time_full_ms = (time.time() - t0) * 1000.0
 
-    # Method B: Proposed Local QAOA Re-Optimization
+    # Method B: Proposed Local Exact-Cluster Re-Optimization
     t0 = time.time()
     sol_local = orchestrator.reoptimize_dynamic_traffic(affected)
     time_local_ms = (time.time() - t0) * 1000.0
@@ -206,7 +206,7 @@ def get_benchmark_report_data():
     # Return default synthetic payload if not yet run
     return {
         "n_20": {
-            "Hybrid QPSO + QAOA-Cluster": {"cost_mean": 52.19, "runtime_ms_mean": 1200.0, "is_stochastic": True},
+            "Hybrid QPSO + Exact-Cluster": {"cost_mean": 52.19, "runtime_ms_mean": 1200.0, "is_stochastic": True},
             "Quantum-Inspired PSO (QPSO)": {"cost_mean": 46.12, "runtime_ms_mean": 4800.0, "is_stochastic": True},
             "Google OR-Tools CVRPTW": {"cost_mean": 45.00, "runtime_ms_mean": 2800.0, "is_stochastic": False}
         }

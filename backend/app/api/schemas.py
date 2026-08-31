@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 
 class SolveRequest(BaseModel):
-    solver_name: str = "Hybrid QPSO + QAOA-Cluster"
+    solver_name: str = "Hybrid QPSO + Exact-Cluster"
     num_nodes: int = 25
     num_vehicles: int = 5
     vehicle_capacity: float = 65.0
