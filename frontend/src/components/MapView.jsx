@@ -114,6 +114,36 @@ export default function MapView({ graphData, solution, onSolve, loading }) {
               </div>
             </div>
 
+            {solution.cost_inr && (
+              <div style={{ marginTop: '12px', borderTop: '1px solid #3f1922', paddingTop: '10px' }}>
+                <span style={{ fontSize: '0.78rem', color: '#a89a9c', display: 'block', marginBottom: '6px' }}>
+                  Estimated Real-World Cost
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.82rem' }}>
+                  <div>
+                    <span style={{ color: '#a89a9c' }}>Fuel:</span>
+                    <p style={{ fontWeight: 700, color: '#fcf8f8' }}>₹{solution.cost_inr.fuel_cost_inr.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: '#a89a9c' }}>Driver Time:</span>
+                    <p style={{ fontWeight: 700, color: '#fcf8f8' }}>₹{solution.cost_inr.labor_cost_inr.toFixed(2)}</p>
+                  </div>
+                </div>
+                {solution.savings_vs_baseline && (
+                  <div style={{ marginTop: '10px', background: '#0d1811', padding: '10px', borderRadius: '8px', border: '1px solid #1f3f22' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#a89a9c' }}>Savings vs. unoptimized routing:</span>
+                    <p style={{ fontWeight: 700, color: '#22c55e', fontSize: '1.1rem' }}>
+                      ₹{solution.savings_vs_baseline.savings_inr.toFixed(2)} ({solution.savings_vs_baseline.savings_pct.toFixed(1)}%)
+                    </p>
+                  </div>
+                )}
+                <p style={{ fontSize: '0.68rem', color: '#6b6062', marginTop: '8px' }}>
+                  Estimate assumes ₹{solution.cost_inr.assumptions.fuel_cost_per_km_inr}/km fuel cost and
+                  ₹{solution.cost_inr.assumptions.driver_wage_per_hour_inr}/hour driver wage - adjust for your own fleet's actual figures.
+                </p>
+              </div>
+            )}
+
             {/* Vehicle legend */}
             <div style={{ marginTop: '12px', borderTop: '1px solid #3f1922', paddingTop: '10px' }}>
               <span style={{ fontSize: '0.78rem', color: '#a89a9c', display: 'block', marginBottom: '6px' }}>Vehicle Route Legend:</span>
