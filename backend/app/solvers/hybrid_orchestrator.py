@@ -6,7 +6,7 @@ from backend.app.solvers.base import BaseSolver, RoutingProblem, RoutingSolution
 from backend.app.solvers.classical.shortest_path import compute_all_pairs_matrix
 from backend.app.graph.clustering import partition_nodes_into_clusters, Cluster
 from backend.app.solvers.quantum.qaoa_solver import ClusterTSPSolver
-from backend.app.solvers.qpso.qpso_solver import QPSOSolver
+from backend.app.solvers.qpso.quantum_ops import initialize_swarm, qpso_position_update
 
 class HybridQuantumOrchestrator(BaseSolver):
     """
@@ -51,7 +51,14 @@ class HybridQuantumOrchestrator(BaseSolver):
             return RoutingSolution(solver_name=self.name, problem=problem, routes=[])
 
         # Step 1: Cluster-first spatial decomposition
-        self.clusters = partition_nodes_into_clusters(customer_nodes, problem.graph, max_cluster_size=self.max_cluster_size)
+        raw_clusters = partition_nodes_into_clusters(customer_nodes, problem.graph, max_cluster_size=self.max_cluster_size)
+        # Spatial clustering (KMeans on lat/lon) has no notion of vehicle capacity,
+        # so a geographically tight cluster can still carry more total demand than
+        # a single vehicle can hold. Since clusters are treated as atomic units when
+        # assigned to a vehicle, an over-capacity cluster could never be assigned to
+        # ANY vehicle and would be silently dropped along with every customer in it.
+        # This pass guarantees every cluster fits within one vehicle's capacity.
+        self.clusters = self._enforce_capacity_safe_clusters(raw_clusters, problem)
 
         # Precompute all-pairs shortest path matrix across customer nodes + depot
         all_nodes = [problem.depot_node] + customer_nodes
@@ -79,6 +86,35 @@ class HybridQuantumOrchestrator(BaseSolver):
         )
         sol.compute_aggregates()
         return sol
+
+    def _enforce_capacity_safe_clusters(self, clusters: List[Cluster], problem: RoutingProblem) -> List[Cluster]:
+        """
+        Splits any cluster whose total demand exceeds a single vehicle's capacity
+        into smaller chunks that each fit within capacity. Spatial clustering has
+        no demand awareness, so this is required for correctness, not just an
+        optimization - without it, an over-capacity cluster is silently dropped
+        entirely (see the note in solve() for why).
+        """
+        cust_map = {c.node_id: c for c in problem.customers}
+        safe_clusters: List[Cluster] = []
+        next_id = 0
+
+        for cluster in clusters:
+            chunk: List[int] = []
+            chunk_demand = 0.0
+            for n in cluster.customer_nodes:
+                d = cust_map[n].demand_units
+                if chunk and (chunk_demand + d) > problem.vehicle_capacity:
+                    safe_clusters.append(Cluster(cluster_id=next_id, center_node=chunk[0], customer_nodes=chunk))
+                    next_id += 1
+                    chunk, chunk_demand = [], 0.0
+                chunk.append(n)
+                chunk_demand += d
+            if chunk:
+                safe_clusters.append(Cluster(cluster_id=next_id, center_node=chunk[0], customer_nodes=chunk))
+                next_id += 1
+
+        return safe_clusters
 
     def reoptimize_dynamic_traffic(self, affected_edges: List[Tuple[int, int]]) -> RoutingSolution:
         """
@@ -184,7 +220,22 @@ class HybridQuantumOrchestrator(BaseSolver):
         path_matrix: Dict[Tuple[int, int], List[int]]
     ) -> Tuple[List[VehicleRoute], List[float]]:
         """
-        Uses QPSO to sequence clusters and stitch intra-cluster tours into full vehicle routes.
+        Uses QPSO to decide CLUSTER visiting order and vehicle assignment, then
+        expands each cluster's already-computed exact sub-tour to build the full
+        vehicle routes.
+
+        NOTE on a bug this fixes: an earlier version of this method ignored
+        self.cluster_tours entirely and just called a full QPSOSolver.solve(problem)
+        - i.e. it re-solved the ENTIRE customer-level routing problem from scratch,
+        throwing away the exact cluster sub-tours computed in step 2. That meant
+        (a) the "hybrid" architecture provided no actual speed advantage over
+        plain QPSO, since every re-optimization re-ran QPSO at full customer
+        granularity regardless of which clusters changed, and (b) the hybrid
+        solver inherited plain QPSO's weaker solution quality on top of wasted
+        cluster computation. Fixed by having QPSO operate over cluster units
+        (typically 3-10 of them) instead of individual customers (dozens+) -
+        this is what makes the "decompose into clusters" architecture actually
+        pay off in both speed and quality.
         """
         cluster_ids = list(self.cluster_tours.keys())
         num_clusters = len(cluster_ids)
@@ -192,11 +243,132 @@ class HybridQuantumOrchestrator(BaseSolver):
         if num_clusters == 0:
             return [], []
 
-        qpso_solver = QPSOSolver(
-            num_particles=self.qpso_particles,
-            max_iterations=self.qpso_iterations,
-            seed=self.seed
-        )
+        cust_map = {c.node_id: c for c in problem.customers}
 
-        qpso_sol = qpso_solver.solve(problem)
-        return qpso_sol.routes, qpso_sol.convergence_curve
+        # Precompute each cluster's fixed entry/exit node and total demand.
+        # The cluster's internal visiting order is already fixed (from the
+        # exact Held-Karp sub-solve) - QPSO only decides the order clusters
+        # are visited in and which vehicle serves which cluster(s).
+        cluster_info = {}
+        for cid in cluster_ids:
+            tour = self.cluster_tours[cid]
+            cluster_info[cid] = {
+                "tour": tour,
+                "entry": tour[0],
+                "exit": tour[-1],
+                "demand": sum(cust_map[n].demand_units for n in tour if n in cust_map),
+            }
+
+        def decode_cluster_positions(position: np.ndarray) -> Tuple[List[VehicleRoute], float, bool]:
+            order = np.argsort(position)
+            sorted_clusters = [cluster_ids[idx] for idx in order]
+
+            routes = []
+            unassigned = list(sorted_clusters)
+            veh_id = 0
+            total_time, total_dist, total_cong, total_emissions = 0.0, 0.0, 0.0, 0.0
+
+            while unassigned and veh_id < problem.num_vehicles:
+                curr_cap = problem.vehicle_capacity
+                cust_seq: List[int] = []
+                full_path = [problem.depot_node]
+                current_node = problem.depot_node
+
+                idx = 0
+                while idx < len(unassigned):
+                    cid = unassigned[idx]
+                    info = cluster_info[cid]
+                    if info["demand"] <= curr_cap:
+                        curr_cap -= info["demand"]
+                        # Travel from current position to this cluster's entry node
+                        seg = path_matrix[(current_node, info["entry"])]
+                        full_path.extend(seg[1:])
+                        # Traverse the cluster's fixed internal tour edge-by-edge
+                        tour = info["tour"]
+                        for a, b in zip(tour[:-1], tour[1:]):
+                            seg2 = path_matrix[(a, b)]
+                            full_path.extend(seg2[1:])
+                        cust_seq.extend(tour)
+                        current_node = info["exit"]
+                        unassigned.pop(idx)
+                    else:
+                        idx += 1  # cluster doesn't fit on this vehicle, try next
+
+                # Return to depot
+                return_segment = path_matrix[(current_node, problem.depot_node)]
+                full_path.extend(return_segment[1:])
+
+                r_time, r_dist, r_cong, r_emissions = 0.0, 0.0, 0.0, 0.0
+                for u, v in zip(full_path[:-1], full_path[1:]):
+                    e_data = problem.graph.edges[u, v]
+                    r_time += problem.traffic_simulator.get_edge_weight(u, v, "time")
+                    r_dist += e_data.get("length", 0.0)
+                    r_cong += e_data.get("congestion_score", 0.0)
+                    r_emissions += e_data.get("emissions_co2_g", 0.0)
+
+                total_time += r_time
+                total_dist += r_dist
+                total_cong += r_cong
+                total_emissions += r_emissions
+
+                routes.append(VehicleRoute(
+                    vehicle_id=veh_id,
+                    full_path_nodes=full_path,
+                    customer_sequence=cust_seq,
+                    total_time_sec=r_time,
+                    total_distance_m=r_dist,
+                    total_congestion_cost=r_cong,
+                    total_emissions_co2_g=r_emissions,
+                    feasible=True
+                ))
+                veh_id += 1
+
+            all_feasible = not unassigned
+            w = problem.objective_weights
+            scalar_cost = (
+                w.get("time", 0.4) * (total_time / 3600.0) +
+                w.get("distance", 0.3) * (total_dist / 1000.0) +
+                w.get("congestion", 0.2) * total_cong +
+                w.get("emissions", 0.1) * (total_emissions / 1000.0)
+            )
+            if not all_feasible:
+                scalar_cost += 1000.0 * len(unassigned)
+
+            return routes, scalar_cost, all_feasible
+
+        # Run QPSO over the small cluster-sequencing space (num_clusters dims,
+        # typically 3-10) instead of the full customer space (dozens+).
+        if self.seed is not None:
+            np.random.seed(self.seed)
+
+        dim = num_clusters
+        num_particles = min(self.qpso_particles, max(10, dim * 4))
+        iterations = min(self.qpso_iterations, max(20, dim * 8))
+
+        positions = initialize_swarm(num_particles, dim)
+        p_bests = np.copy(positions)
+        p_best_costs = np.full(num_particles, float('inf'))
+        g_best = None
+        g_best_cost = float('inf')
+        g_best_routes: List[VehicleRoute] = []
+        convergence_curve = []
+
+        for i in range(num_particles):
+            routes, cost, _ = decode_cluster_positions(positions[i])
+            p_best_costs[i] = cost
+            if cost < g_best_cost:
+                g_best_cost, g_best, g_best_routes = cost, np.copy(positions[i]), routes
+        convergence_curve.append(g_best_cost)
+
+        for iter_idx in range(1, iterations):
+            beta = 1.0 - 0.6 * (iter_idx / iterations)  # 1.0 -> 0.4 decay, same schedule as QPSOSolver
+            positions = qpso_position_update(positions, p_bests, g_best, beta)
+            for i in range(num_particles):
+                routes, cost, _ = decode_cluster_positions(positions[i])
+                if cost < p_best_costs[i]:
+                    p_best_costs[i], p_bests[i] = cost, np.copy(positions[i])
+                if cost < g_best_cost:
+                    g_best_cost, g_best, g_best_routes = cost, np.copy(positions[i]), routes
+            convergence_curve.append(g_best_cost)
+
+        return g_best_routes, convergence_curve
