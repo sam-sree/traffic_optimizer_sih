@@ -55,9 +55,27 @@ def run_phase5_tests():
     print(f"  • Initial Solve Time:   {sol_initial.wall_time_sec * 1000:.1f} ms")
 
     # 3. Simulate Live Traffic Perturbation (Dynamic Incident Injection)
-    print("\n[Phase 5] Injecting dynamic dynamic traffic incident mid-route...")
-    affected_edges = sim.inject_random_incidents(count=3, severity_range=(4.0, 7.0))
-    print(f"  • Injected incidents at edges: {affected_edges}")
+    # Deliberately inject the incident on an edge that's actually part of a
+    # solved route (not a uniformly random edge anywhere in the network).
+    # On a real OSM network, purely random edges frequently land on roads no
+    # customer route ever uses - especially once the network is much larger
+    # than the customer count - which made this demo's outcome a matter of
+    # luck rather than a reliable demonstration of the re-optimization logic.
+    print("\n[Phase 5] Injecting dynamic traffic incident on an edge actually used by a route...")
+    candidate_edges = []
+    for route in sol_initial.routes:
+        path = route.full_path_nodes
+        candidate_edges.extend(zip(path[:-1], path[1:]))
+
+    if not candidate_edges:
+        raise RuntimeError("No route edges available to inject an incident onto.")
+
+    random.shuffle(candidate_edges)
+    affected_edges = []
+    for u, v in candidate_edges[:3]:
+        sim.inject_incident(u, v, severity_factor=6.0, duration_hours=1.0)
+        affected_edges.append((u, v))
+    print(f"  • Injected incidents at route edges: {affected_edges}")
 
     # Benchmark Method A: Full Network Re-solve from scratch
     t0 = time.time()
