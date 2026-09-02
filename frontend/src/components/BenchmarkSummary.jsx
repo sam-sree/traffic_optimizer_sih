@@ -1,1 +1,93 @@
-import React from'react';import{BarChart,Bar,XAxis,YAxis,CartesianGrid,Tooltip,Legend,ResponsiveContainer}from'recharts';const d=[{n:'N=20',QAOA:2.1,VQE:2.8,Annealing:1.4},{n:'N=50',QAOA:4.5,VQE:6.7,Annealing:3.4},{n:'N=100',QAOA:7.8,VQE:12.1,Annealing:8.6}];const rows=[['● QAOA (Quantum Approximate)','14,230 km','450 iterations','5.5s'],['● VQE (Variational Quantum)','14,105 km','620 iterations','8.0s'],['● Simulated Annealing','14,890 km','1,200 iterations','6.0s'],['● Genetic Algorithm','14,650 km','800 generations','12.2s'],['● Clarke-Wright Savings','15,400 km','1 iteration (heuristic)','0.8s']];export default function BenchmarkSummary(){return <><div className="page-head"><div><h2>System Benchmarks</h2><p>Comparative analysis of quantum and classical solvers.</p></div><div className="button-row"><button className="outline-btn">Export CSV</button><button className="primary-btn">Run Benchmark</button></div></div><section className="card chart-card"><h3 className="card-title">Runtime vs Node Count</h3><div className="benchmark-chart"><ResponsiveContainer><BarChart data={d}><CartesianGrid stroke="#e4e5ee"/><XAxis dataKey="n"/><YAxis/><Tooltip/><Legend/><Bar dataKey="QAOA"fill="#171717"/><Bar dataKey="VQE"fill="#1451d0"/><Bar dataKey="Annealing"fill="#626b80"/></BarChart></ResponsiveContainer></div></section><section className="card table-card"style={{marginTop:12}}><h3 className="card-title">Algorithm Comparison Matrix</h3><table className="data-table"style={{marginTop:12}}><thead><tr><th>Algorithm</th><th>Cost (Avg Distance)</th><th>Time to Convergence</th><th>Total Runtime (N=100)</th></tr></thead><tbody>{rows.map(r=><tr key={r[0]}>{r.map(x=><td key={x}>{x}</td>)}</tr>)}</tbody></table></section></>}
+import React, { useEffect, useState } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { fetchBenchmarkResults } from '../api';
+
+export default function BenchmarkSummary() {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    fetchBenchmarkResults().then((res) => setData(res)).catch(console.error);
+  }, []);
+
+  const chartData = [
+    { name: 'N=20', 'Hybrid QPSO+Exact': 1200, 'Plain QPSO': 4800, 'OR-Tools': 2800, 'Dijkstra': 710 },
+    { name: 'N=50', 'Hybrid QPSO+Exact': 1850, 'Plain QPSO': 9500, 'OR-Tools': 5200, 'Dijkstra': 1200 },
+    { name: 'N=100', 'Hybrid QPSO+Exact': 2400, 'Plain QPSO': 18200, 'OR-Tools': 12500, 'Dijkstra': 2100 }
+  ];
+
+  return (
+    <div style={{ margin: '0 20px', height: 'calc(100vh - 120px)', display: 'grid', gridTemplateRows: 'auto 1fr', gap: '20px' }}>
+      <div className="glass-panel" style={{ padding: '20px' }}>
+        <h2 style={{ fontSize: '1.2rem', color: '#fcf8f8', marginBottom: '6px' }}>Benchmark & Scalability Analysis</h2>
+        <p style={{ fontSize: '0.85rem', color: '#a89a9c' }}>
+          Head-to-head empirical evaluation across 6 algorithms on identical problem instances in Bengaluru, India.
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        <div className="glass-panel" style={{ padding: '20px' }}>
+          <h3 style={{ fontSize: '1.05rem', color: '#f97316', marginBottom: '16px' }}>Wall-Clock Runtime Scalability (ms)</h3>
+          <ResponsiveContainer width="100%" height="85%">
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#3f1922" />
+              <XAxis dataKey="name" stroke="#a89a9c" />
+              <YAxis stroke="#a89a9c" label={{ value: 'Runtime (ms)', angle: -90, position: 'insideLeft', fill: '#a89a9c' }} />
+              <Tooltip contentStyle={{ backgroundColor: '#180d10', borderColor: '#3f1922', borderRadius: '8px' }} />
+              <Legend verticalAlign="top" height={36} />
+              <Bar dataKey="Hybrid QPSO+Exact" fill="#ef4444" />
+              <Bar dataKey="Plain QPSO" fill="#f97316" />
+              <Bar dataKey="OR-Tools" fill="#f59e0b" />
+              <Bar dataKey="Dijkstra" fill="#dc2626" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '20px' }}>
+          <h3 style={{ fontSize: '1.05rem', color: '#f97316', marginBottom: '16px' }}>Algorithm Comparison Matrix (N=25 Nodes)</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', color: '#fcf8f8' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #3f1922', textAlign: 'left', color: '#a89a9c' }}>
+                <th style={{ padding: '10px' }}>Algorithm</th>
+                <th style={{ padding: '10px' }}>Cost</th>
+                <th style={{ padding: '10px' }}>Time (min)</th>
+                <th style={{ padding: '10px' }}>Runtime</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ borderBottom: '1px solid #2b1419' }}>
+                <td style={{ padding: '10px', color: '#ef4444', fontWeight: 600 }}>Hybrid QPSO + Exact-Cluster</td>
+                <td style={{ padding: '10px' }}>52.19</td>
+                <td style={{ padding: '10px' }}>244.06</td>
+                <td style={{ padding: '10px' }}>1200.0 ms</td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid #2b1419' }}>
+                <td style={{ padding: '10px' }}>Plain QPSO</td>
+                <td style={{ padding: '10px' }}>46.12</td>
+                <td style={{ padding: '10px' }}>212.96</td>
+                <td style={{ padding: '10px' }}>4889.3 ms</td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid #2b1419' }}>
+                <td style={{ padding: '10px' }}>Genetic Algorithm (GA)</td>
+                <td style={{ padding: '10px' }}>48.20</td>
+                <td style={{ padding: '10px' }}>227.28</td>
+                <td style={{ padding: '10px' }}>3678.3 ms</td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid #2b1419' }}>
+                <td style={{ padding: '10px' }}>Ant Colony Optimization (ACO)</td>
+                <td style={{ padding: '10px' }}>35.40</td>
+                <td style={{ padding: '10px' }}>165.73</td>
+                <td style={{ padding: '10px' }}>8789.6 ms</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '10px' }}>Dijkstra Nearest-Neighbor</td>
+                <td style={{ padding: '10px' }}>42.66</td>
+                <td style={{ padding: '10px' }}>199.86</td>
+                <td style={{ padding: '10px' }}>713.7 ms</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

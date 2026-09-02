@@ -2,27 +2,13 @@ import axios from 'axios';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
 
-const requestConfig = { headers: { 'Content-Type': 'application/json' } };
-
 export const fetchGraphData = async () => {
   const res = await axios.get(`${API_BASE}/graph`);
   return res.data;
 };
 
 export const runSolve = async (payload) => {
-  const res = await axios.post(`${API_BASE}/solve`, {
-    ...payload,
-    solver_name: payload.algorithm,
-    num_vehicles: Number(payload.fleet_size),
-    vehicle_capacity: Number(payload.vehicle_capacity),
-    time_of_day_hours: 8.5,
-    objective_weights: {
-      time: Number(payload.priority_weight),
-      distance: Number(payload.distance_sensitivity),
-      congestion: 0.2,
-      emissions: 0.1
-    }
-  }, requestConfig);
+  const res = await axios.post(`${API_BASE}/solve`, payload);
   return res.data;
 };
 

@@ -3,7 +3,7 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional, Set, Any
 
 from backend.app.solvers.base import BaseSolver, RoutingProblem, RoutingSolution, VehicleRoute
-from backend.app.solvers.classical.shortest_path import compute_all_pairs_matrix, dijkstra_path
+from backend.app.solvers.classical.shortest_path import compute_all_pairs_matrix
 from backend.app.graph.clustering import partition_nodes_into_clusters, Cluster
 from backend.app.solvers.quantum.qaoa_solver import ClusterTSPSolver
 from backend.app.solvers.qpso.quantum_ops import initialize_swarm, qpso_position_update
@@ -259,12 +259,6 @@ class HybridQuantumOrchestrator(BaseSolver):
                 "demand": sum(cust_map[n].demand_units for n in tour if n in cust_map),
             }
 
-        def get_route_segment(source: int, target: int) -> List[int]:
-            segment = path_matrix.get((source, target))
-            if segment is None:
-                _, segment = dijkstra_path(problem.graph, problem.traffic_simulator, source, target, objective="time")
-            return segment
-
         def decode_cluster_positions(position: np.ndarray) -> Tuple[List[VehicleRoute], float, bool]:
             order = np.argsort(position)
             sorted_clusters = [cluster_ids[idx] for idx in order]
@@ -287,12 +281,12 @@ class HybridQuantumOrchestrator(BaseSolver):
                     if info["demand"] <= curr_cap:
                         curr_cap -= info["demand"]
                         # Travel from current position to this cluster's entry node
-                        seg = get_route_segment(current_node, info["entry"])
+                        seg = path_matrix[(current_node, info["entry"])]
                         full_path.extend(seg[1:])
                         # Traverse the cluster's fixed internal tour edge-by-edge
                         tour = info["tour"]
                         for a, b in zip(tour[:-1], tour[1:]):
-                            seg2 = get_route_segment(a, b)
+                            seg2 = path_matrix[(a, b)]
                             full_path.extend(seg2[1:])
                         cust_seq.extend(tour)
                         current_node = info["exit"]
@@ -301,7 +295,7 @@ class HybridQuantumOrchestrator(BaseSolver):
                         idx += 1  # cluster doesn't fit on this vehicle, try next
 
                 # Return to depot
-                return_segment = get_route_segment(current_node, problem.depot_node)
+                return_segment = path_matrix[(current_node, problem.depot_node)]
                 full_path.extend(return_segment[1:])
 
                 r_time, r_dist, r_cong, r_emissions = 0.0, 0.0, 0.0, 0.0
