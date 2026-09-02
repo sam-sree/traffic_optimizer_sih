@@ -5,6 +5,7 @@ import ConvergenceChart from './components/ConvergenceChart';
 import ParetoExplorer from './components/ParetoExplorer';
 import ReoptimizationPanel from './components/ReoptimizationPanel';
 import BenchmarkSummary from './components/BenchmarkSummary';
+import OptimizationResults from './components/OptimizationResults';
 import { fetchGraphData, runSolve } from './api';
 
 export default function App() {
@@ -12,45 +13,51 @@ export default function App() {
   const [graphData, setGraphData] = useState(null);
   const [solution, setSolution] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
+  const [appliedScenario, setAppliedScenario] = useState(null);
+  const refreshGraph = async () => {
+    try {
+      setGraphData(await fetchGraphData());
+    } catch (err) {
+      console.error('Failed to refresh graph data:', err);
+      setApiError(err.response ? `Backend request failed (${err.response.status}).` : `Backend disconnected: ${err.message}`);
+    }
+  };
 
   useEffect(() => {
-    fetchGraphData()
-      .then((data) => setGraphData(data))
-      .catch((err) => console.error('Failed to fetch graph data:', err));
+    refreshGraph();
 
-    // Run default initial solve
-    handleSolve({
-      solver_name: 'Hybrid QPSO + Exact-Cluster',
-      num_nodes: 25,
-      num_vehicles: 5,
-      vehicle_capacity: 65.0,
-      time_of_day_hours: 8.5
-    });
   }, []);
 
   const handleSolve = async (payload) => {
     setLoading(true);
+    setApiError('');
     try {
       const sol = await runSolve(payload);
       setSolution(sol);
+      return sol;
     } catch (err) {
       console.error('Solve failed:', err);
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+      setApiError(detail ? `Optimization failed (${status ?? 'error'}): ${detail}` : status ? `Optimization failed (${status}).` : `Backend disconnected: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#080c14' }}>
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} networkSummary={graphData?.summary} />
+    <div className="app-shell">
+      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} connected={Boolean(graphData)} />
 
-      <main style={{ flex: 1 }}>
+      <main className="content">
         {activeTab === 'map' && (
-          <MapView graphData={graphData} solution={solution} onSolve={handleSolve} loading={loading} />
+          <MapView graphData={graphData} solution={solution} onSolve={handleSolve} loading={loading} error={apiError} appliedScenario={appliedScenario} />
         )}
+        {activeTab === 'results' && <OptimizationResults solution={solution} graphData={graphData} />}
         {activeTab === 'convergence' && <ConvergenceChart solution={solution} />}
-        {activeTab === 'pareto' && <ParetoExplorer />}
-        {activeTab === 'reoptimize' && <ReoptimizationPanel />}
+        {activeTab === 'pareto' && <ParetoExplorer onApplyScenario={(scenario) => { setAppliedScenario(scenario); setActiveTab('map'); }} />}
+        {activeTab === 'reoptimize' && <ReoptimizationPanel onGraphRefresh={refreshGraph} graphData={graphData} />}
         {activeTab === 'benchmarks' && <BenchmarkSummary />}
       </main>
     </div>

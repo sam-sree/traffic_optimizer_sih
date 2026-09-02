@@ -79,6 +79,14 @@ def solve_routing_problem(req: SolveRequest):
         objective_weights=req.objective_weights
     )
 
+    supported_solvers = {
+        "Hybrid QPSO + Exact-Cluster", "Quantum-Inspired PSO (QPSO)",
+        "Genetic Algorithm (GA)", "Ant Colony Optimization (ACO)",
+        "Google OR-Tools CVRPTW", "Dijkstra Nearest-Neighbor"
+    }
+    if req.solver_name not in supported_solvers:
+        raise HTTPException(status_code=422, detail=f"Unsupported solver_name: {req.solver_name}")
+
     if req.solver_name == "Hybrid QPSO + Exact-Cluster":
         sol = orchestrator.solve(problem)
     elif req.solver_name == "Quantum-Inspired PSO (QPSO)":
@@ -91,8 +99,6 @@ def solve_routing_problem(req: SolveRequest):
         sol = ORToolsSolver(time_limit_sec=2.0).solve(problem)
     elif req.solver_name == "Dijkstra Nearest-Neighbor":
         sol = ShortestPathSolver(use_astar=False).solve(problem)
-    else:
-        sol = orchestrator.solve(problem)
 
     # Real-world (rupee) cost translation, and savings vs. an "unoptimized"
     # baseline (naive nearest-neighbor) - see cost_translation.py for the
@@ -165,6 +171,8 @@ def reoptimize_traffic(req: ReoptimizeRequest):
     if req.affected_edges:
         affected = [tuple(e) for e in req.affected_edges]
         for u, v in affected:
+            if not G.has_edge(u, v):
+                raise HTTPException(status_code=422, detail=f"Unknown graph edge: [{u}, {v}]")
             traffic_sim.inject_incident(u, v, severity_factor=req.severity, duration_hours=2.0)
     else:
         affected = traffic_sim.inject_random_incidents(count=3, severity_range=(4.0, 7.0))
@@ -250,6 +258,8 @@ def get_benchmark_report_data():
 @router.post("/incidents/inject")
 def inject_incidents(req: IncidentRequest):
     if req.u is not None and req.v is not None:
+        if not G.has_edge(req.u, req.v):
+            raise HTTPException(status_code=422, detail=f"Unknown graph edge: [{req.u}, {req.v}]")
         traffic_sim.inject_incident(req.u, req.v, severity_factor=req.severity)
     else:
         traffic_sim.inject_random_incidents(count=req.count, severity_range=(req.severity, req.severity + 2.0))
