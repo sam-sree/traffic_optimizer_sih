@@ -22,6 +22,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
+import L from 'leaflet';
 
 const ALGORITHMS = ['Hybrid QPSO', 'Plain QPSO', 'Classical'];
 const BASELINE = { distance_km: 18.1, time_min: 78.2 };
@@ -53,6 +55,30 @@ const FLEET = [78, 64, 83, 71, 91, 56, 74, 68, 87].map((utilization, index) => (
   driver: index === 4 ? 'Assigning' : 'On route',
   level: [82, 66, 91, 74, 58, 88, 63, 79, 46][index],
 }));
+const TRACKING_VEHICLES = FLEET.map((vehicle, index) => ({
+  ...vehicle,
+  id: index,
+  lat: 12.956 + (index * 0.0041) % 0.038,
+  lon: 77.620 + (index * 0.0037) % 0.040,
+  eta: 12 + index * 3,
+}));
+
+function TrackingMapFocus({ vehicle }) {
+  const map = useMap();
+  useEffect(() => {
+    if (vehicle) map.flyTo([vehicle.lat, vehicle.lon], 15, { duration: 0.45 });
+  }, [map, vehicle]);
+  return null;
+}
+
+function vehicleIcon(vehicle, selected) {
+  return L.divIcon({
+    className: `vehicle-marker ${selected ? 'selected' : ''}`,
+    html: `<span class="vehicle-pulse"></span><b>V${vehicle.id}</b>`,
+    iconSize: [42, 30],
+    iconAnchor: [21, 15],
+  });
+}
 
 export default function ParetoExplorer({ onApplyScenario }) {
   const [points, setPoints] = useState(MOCK_POINTS);
@@ -63,6 +89,7 @@ export default function ParetoExplorer({ onApplyScenario }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState('');
   const [filters, setFilters] = useState({ maxTime: 85, maxDistance: 20, algorithms: ALGORITHMS });
+  const [selectedVehicle, setSelectedVehicle] = useState(TRACKING_VEHICLES[0]);
 
   const filteredPoints = useMemo(() => points.filter((point) => (
     point.time_min <= filters.maxTime &&
@@ -135,7 +162,7 @@ export default function ParetoExplorer({ onApplyScenario }) {
 
         {activeWorkspaceView === 'analytics' && <section className="card chart-card"><div className="results-section-head"><div><h3>Trade-off Solution Space</h3><p>{filteredPoints.length} non-dominated solutions shown</p></div>{showBaselineOverlay && <span className="baseline-chip">Baseline shown</span>}</div><div className="pareto-chart"><ResponsiveContainer><ScatterChart margin={{ top: 18, right: 18, bottom: 20, left: 8 }}><CartesianGrid stroke="#dfe2ee" /><XAxis type="number" dataKey="distance_km" name="Distance" unit=" km" stroke="#687083" /><YAxis type="number" dataKey="time_min" name="Travel time" unit=" min" stroke="#687083" /><Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: '#fff', border: '1px solid #cbd5e1' }} /><ReferenceLine x={BASELINE.distance_km} stroke="#6b7280" strokeDasharray="6 5" opacity={showBaselineOverlay ? 1 : 0} /><ReferenceLine y={BASELINE.time_min} stroke="#6b7280" strokeDasharray="6 5" opacity={showBaselineOverlay ? 1 : 0} /><Scatter data={filteredPoints} onClick={(event) => event?.payload && setSelectedTradeOffPoint(event.payload)}>{filteredPoints.map((point, index) => <Cell key={point.id} fill={selectedTradeOffPoint?.id === point.id ? '#f97316' : POINT_COLORS[index % POINT_COLORS.length]} stroke="#202537" strokeWidth={2} />)}</Scatter></ScatterChart></ResponsiveContainer></div></section>}
         {activeWorkspaceView === 'overview' && <div className="workspace-view-grid"><div className="workspace-kpi"><span>Active routes</span><strong>9</strong><small>All dispatch lanes live</small></div><div className="workspace-kpi"><span>Operational cost index</span><strong>69.4</strong><small>12.8% below baseline</small></div><div className="workspace-kpi"><span>Fleet health</span><strong>96%</strong><small>8 of 9 vehicles on route</small></div></div>}
-        {activeWorkspaceView === 'live-tracking' && <div className="tracking-view"><div className="tracking-map"><div className="tracking-grid">{FLEET.map((row, index) => <i key={row.vehicle} style={{ left: `${18 + (index * 9) % 72}%`, top: `${20 + (index * 17) % 64}%`, background: POINT_COLORS[index % POINT_COLORS.length] }} />)}</div><span className="tracking-label">Bengaluru delivery zone</span></div><div className="tracking-list">{FLEET.slice(0, 5).map((row, index) => <div key={row.vehicle}><i style={{ background: POINT_COLORS[index % POINT_COLORS.length] }} /><span><b>{row.vehicle}</b><small>En route · {12 + index * 3} min ETA</small></span><strong>GPS live</strong></div>)}</div></div>}
+        {activeWorkspaceView === 'live-tracking' && <div className="tracking-view"><div className="tracking-map"><MapContainer center={[12.9716, 77.6412]} zoom={13} scrollWheelZoom><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" /><TrackingMapFocus vehicle={selectedVehicle} />{TRACKING_VEHICLES.map((vehicle) => <Marker key={vehicle.vehicle} position={[vehicle.lat, vehicle.lon]} icon={vehicleIcon(vehicle, selectedVehicle.id === vehicle.id)} eventHandlers={{ click: () => setSelectedVehicle(vehicle) }}><Popup>{vehicle.vehicle} · GPS live<br />ETA {vehicle.eta} min</Popup></Marker>)}<CircleMarker center={[12.9716, 77.6412]} radius={5} pathOptions={{ color: '#3020ad', fillColor: '#3020ad', fillOpacity: 1 }} /></MapContainer><span className="tracking-label">Bengaluru delivery zone · {selectedVehicle.vehicle} selected</span></div><div className="tracking-list">{TRACKING_VEHICLES.map((vehicle) => <button className={`tracking-vehicle ${selectedVehicle.id === vehicle.id ? 'selected' : ''}`} key={vehicle.vehicle} onClick={() => setSelectedVehicle(vehicle)}><i style={{ background: POINT_COLORS[vehicle.id % POINT_COLORS.length] }} /><span><b>{vehicle.vehicle}</b><small>En route · {vehicle.eta} min ETA</small></span><strong>GPS live</strong></button>)}</div></div>}
         {activeWorkspaceView === 'fleet-status' && <div className="fleet-table-wrap"><table className="fleet-table"><thead><tr><th>Vehicle</th><th>Capacity utilization</th><th>Driver status</th><th>Battery / fuel</th></tr></thead><tbody>{FLEET.map((row) => <tr key={row.vehicle}><td><b>{row.vehicle}</b></td><td><div className="utilization"><span style={{ width: `${row.utilization}%` }} /><b>{row.utilization}%</b></div></td><td><span className={row.driver === 'On route' ? 'fleet-live' : 'fleet-warn'}>{row.driver}</span></td><td>{row.level}%</td></tr>)}</tbody></table></div>}
       </main>
 
