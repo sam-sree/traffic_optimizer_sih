@@ -36,7 +36,7 @@ def run_phase5_tests():
         depot_node=depot_node,
         customers=customers,
         num_vehicles=6,
-        vehicle_capacity=70.0
+        vehicle_capacity=90.0
     )
 
     print(f"[Phase 5] Problem Setup: {len(customers)} customers, {problem.num_vehicles} vehicles")

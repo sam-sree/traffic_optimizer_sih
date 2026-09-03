@@ -54,6 +54,7 @@ class RoutingSolution:
     wall_time_sec: float = 0.0
     convergence_curve: List[float] = field(default_factory=list) # Best objective cost per iteration
     is_feasible: bool = True
+    unserved_customer_count: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def compute_aggregates(self):
@@ -71,7 +72,17 @@ class RoutingSolution:
             w.get("congestion", 0.2) * self.total_congestion_cost +
             w.get("emissions", 0.1) * (self.total_emissions_co2_g / 1000.0)
         )
-        self.is_feasible = all(r.feasible for r in self.routes)
+
+        # A route can be internally "feasible" (respects capacity within
+        # itself) while a customer is silently missing entirely - e.g. when
+        # total demand exceeds total fleet capacity and a solver simply never
+        # assigns the customer that didn't fit anywhere. Checking only
+        # per-route feasibility misses this; every requested customer must
+        # actually appear in some route for the solution to be truly feasible.
+        served_nodes = set(n for r in self.routes for n in r.customer_sequence)
+        requested_nodes = set(c.node_id for c in self.problem.customers)
+        self.unserved_customer_count = len(requested_nodes - served_nodes)
+        self.is_feasible = all(r.feasible for r in self.routes) and self.unserved_customer_count == 0
 
 class BaseSolver(ABC):
     """Abstract interface for all VRP and route optimization algorithms."""

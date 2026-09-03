@@ -150,6 +150,7 @@ def solve_routing_problem(req: SolveRequest):
     return {
         "solver_name": sol.solver_name,
         "is_feasible": sol.is_feasible,
+        "unserved_customer_count": sol.unserved_customer_count,
         "total_cost": sol.total_cost,
         "cost_inr": cost_inr,
         "savings_vs_baseline": savings_vs_baseline,
