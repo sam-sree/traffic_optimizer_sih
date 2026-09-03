@@ -1,7 +1,7 @@
 import os
 import json
 import random
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from typing import Dict, Any, List
 
 from backend.app.graph.ingestion import get_bengaluru_graph
@@ -17,6 +17,7 @@ from backend.app.solvers.hybrid_orchestrator import HybridQuantumOrchestrator
 from backend.app.solvers.cost_translation import compute_real_world_cost, compute_savings_vs_baseline, compute_fleet_scale_emissions
 from backend.app.solvers.sla_compliance import compute_solution_sla
 from backend.app.solvers.maps_export import build_google_maps_url
+from backend.app.graph.csv_import import parse_customer_csv, _nearest_node
 from backend.app.api.schemas import SolveRequest, IncidentRequest, ReoptimizeRequest
 
 router = APIRouter(prefix="/api")
@@ -55,58 +56,43 @@ def get_graph_data():
         "summary": traffic_sim.get_network_summary()
     }
 
-@router.post("/solve")
-def solve_routing_problem(req: SolveRequest):
-    """Executes selected routing solver and returns route geometries and metrics."""
-    traffic_sim.update_traffic_state(req.time_of_day_hours)
-    nodes = list(G.nodes())
-    random.seed(42)
-    depot_node = nodes[0]
-    cust_nodes = random.sample(nodes[1:], min(req.num_nodes, len(nodes) - 1))
+SUPPORTED_SOLVERS = {
+    "Hybrid QPSO + Exact-Cluster", "Quantum-Inspired PSO (QPSO)",
+    "Genetic Algorithm (GA)", "Ant Colony Optimization (ACO)",
+    "Google OR-Tools CVRPTW", "Dijkstra Nearest-Neighbor"
+}
 
-    customers = [
-        CustomerDemand(node_id=n, demand_units=random.choice([10.0, 15.0, 20.0]))
-        for n in cust_nodes
-    ]
 
-    problem = RoutingProblem(
-        graph=G,
-        traffic_simulator=traffic_sim,
-        depot_node=depot_node,
-        customers=customers,
-        num_vehicles=req.num_vehicles,
-        vehicle_capacity=req.vehicle_capacity,
-        objective_weights=req.objective_weights
-    )
+def _run_solver(problem: RoutingProblem, solver_name: str):
+    """Dispatches to the requested solver. Shared by /solve (synthetic demand)
+    and /solve_csv (real uploaded order list) so both paths produce identical,
+    consistent results and reporting."""
+    if solver_name not in SUPPORTED_SOLVERS:
+        raise HTTPException(status_code=422, detail=f"Unsupported solver_name: {solver_name}")
 
-    supported_solvers = {
-        "Hybrid QPSO + Exact-Cluster", "Quantum-Inspired PSO (QPSO)",
-        "Genetic Algorithm (GA)", "Ant Colony Optimization (ACO)",
-        "Google OR-Tools CVRPTW", "Dijkstra Nearest-Neighbor"
-    }
-    if req.solver_name not in supported_solvers:
-        raise HTTPException(status_code=422, detail=f"Unsupported solver_name: {req.solver_name}")
+    if solver_name == "Hybrid QPSO + Exact-Cluster":
+        return orchestrator.solve(problem)
+    elif solver_name == "Quantum-Inspired PSO (QPSO)":
+        return QPSOSolver(num_particles=40, max_iterations=100, seed=42).solve(problem)
+    elif solver_name == "Genetic Algorithm (GA)":
+        return GASolver(pop_size=40, generations=100, seed=42).solve(problem)
+    elif solver_name == "Ant Colony Optimization (ACO)":
+        return ACOSolver(num_ants=25, iterations=80, seed=42).solve(problem)
+    elif solver_name == "Google OR-Tools CVRPTW":
+        return ORToolsSolver(time_limit_sec=2.0).solve(problem)
+    elif solver_name == "Dijkstra Nearest-Neighbor":
+        return ShortestPathSolver(use_astar=False).solve(problem)
 
-    if req.solver_name == "Hybrid QPSO + Exact-Cluster":
-        sol = orchestrator.solve(problem)
-    elif req.solver_name == "Quantum-Inspired PSO (QPSO)":
-        sol = QPSOSolver(num_particles=40, max_iterations=100, seed=42).solve(problem)
-    elif req.solver_name == "Genetic Algorithm (GA)":
-        sol = GASolver(pop_size=40, generations=100, seed=42).solve(problem)
-    elif req.solver_name == "Ant Colony Optimization (ACO)":
-        sol = ACOSolver(num_ants=25, iterations=80, seed=42).solve(problem)
-    elif req.solver_name == "Google OR-Tools CVRPTW":
-        sol = ORToolsSolver(time_limit_sec=2.0).solve(problem)
-    elif req.solver_name == "Dijkstra Nearest-Neighbor":
-        sol = ShortestPathSolver(use_astar=False).solve(problem)
 
-    # Real-world (rupee) cost translation, and savings vs. an "unoptimized"
-    # baseline (naive nearest-neighbor) - see cost_translation.py for the
-    # stated assumptions behind the conversion factors used here.
+def _build_solution_response(problem: RoutingProblem, sol, solver_name: str, depot_node: int) -> Dict[str, Any]:
+    """Builds the full response payload (cost, savings, SLA, sustainability,
+    per-route Maps links) for a solved problem. Shared by /solve and
+    /solve_csv so a CSV-driven run gets exactly the same reporting as a
+    synthetic-demand run - same numbers, same trust level, same format."""
     cost_inr = compute_real_world_cost(sol.total_time_sec, sol.total_distance_m)
     savings_vs_baseline = None
     sustainability = None
-    if req.solver_name != "Dijkstra Nearest-Neighbor":
+    if solver_name != "Dijkstra Nearest-Neighbor":
         baseline_sol = ShortestPathSolver(use_astar=False).solve(problem)
         savings_vs_baseline = compute_savings_vs_baseline(
             optimized_time_sec=sol.total_time_sec,
@@ -123,8 +109,6 @@ def solve_routing_problem(req: SolveRequest):
             "assumptions": opt_emissions["assumptions"],
         }
 
-    # On-time delivery / SLA compliance - see sla_compliance.py for the
-    # simplifying assumption this rests on (common depot departure time).
     sla_report = compute_solution_sla(sol)
 
     routes_payload = []
@@ -164,6 +148,87 @@ def solve_routing_problem(req: SolveRequest):
         "metadata": sol.metadata,
         "routes": routes_payload
     }
+
+
+@router.post("/solve")
+def solve_routing_problem(req: SolveRequest):
+    """Executes selected routing solver and returns route geometries and metrics."""
+    traffic_sim.update_traffic_state(req.time_of_day_hours)
+    nodes = list(G.nodes())
+    random.seed(42)
+    depot_node = nodes[0]
+    cust_nodes = random.sample(nodes[1:], min(req.num_nodes, len(nodes) - 1))
+
+    customers = [
+        CustomerDemand(node_id=n, demand_units=random.choice([10.0, 15.0, 20.0]))
+        for n in cust_nodes
+    ]
+
+    problem = RoutingProblem(
+        graph=G,
+        traffic_simulator=traffic_sim,
+        depot_node=depot_node,
+        customers=customers,
+        num_vehicles=req.num_vehicles,
+        vehicle_capacity=req.vehicle_capacity,
+        objective_weights=req.objective_weights
+    )
+
+    sol = _run_solver(problem, req.solver_name)
+    return _build_solution_response(problem, sol, req.solver_name, depot_node)
+
+
+@router.post("/solve_csv")
+async def solve_from_csv(
+    file: UploadFile = File(...),
+    solver_name: str = Form("Hybrid QPSO + Exact-Cluster"),
+    num_vehicles: int = Form(10),
+    vehicle_capacity: float = Form(80.0),
+    depot_latitude: float = Form(12.9786),
+    depot_longitude: float = Form(77.5825),
+):
+    """
+    Real order-intake endpoint: accepts an uploaded CSV of today's actual
+    orders (see csv_import.py for the expected column format) instead of
+    synthetic/generated demand. This is the entry point an operations team
+    would actually use each morning, as opposed to /solve which is for
+    demos/benchmarking against generated test instances.
+    """
+    csv_bytes = await file.read()
+    try:
+        csv_text = csv_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="CSV file must be UTF-8 encoded text.")
+
+    parsed = parse_customer_csv(csv_text, G)
+    if not parsed["customers"]:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "No valid customer rows found in CSV.", "errors": parsed["errors"]}
+        )
+
+    depot_node, depot_snap_km = _nearest_node(G, depot_latitude, depot_longitude)
+
+    problem = RoutingProblem(
+        graph=G,
+        traffic_simulator=traffic_sim,
+        depot_node=depot_node,
+        customers=parsed["customers"],
+        num_vehicles=num_vehicles,
+        vehicle_capacity=vehicle_capacity,
+    )
+
+    sol = _run_solver(problem, solver_name)
+    response = _build_solution_response(problem, sol, solver_name, depot_node)
+    response["csv_import_report"] = {
+        "rows_imported": len(parsed["customers"]),
+        "rows_skipped": len(parsed["errors"]),
+        "errors": parsed["errors"],
+        "snap_report": parsed["snap_report"],
+        "depot_snap_distance_km": depot_snap_km,
+    }
+    return response
+
 
 @router.post("/reoptimize")
 def reoptimize_traffic(req: ReoptimizeRequest):

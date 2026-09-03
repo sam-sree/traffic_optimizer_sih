@@ -26,6 +26,20 @@ export const runSolve = async (payload) => {
   return res.data;
 };
 
+export const runSolveFromCsv = async (file, { solverName, numVehicles, vehicleCapacity, depotLat, depotLon }) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('solver_name', solverName);
+  formData.append('num_vehicles', numVehicles);
+  formData.append('vehicle_capacity', vehicleCapacity);
+  formData.append('depot_latitude', depotLat);
+  formData.append('depot_longitude', depotLon);
+  const res = await axios.post(`${API_BASE}/solve_csv`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return res.data;
+};
+
 export const runReoptimize = async (payload) => {
   const res = await axios.post(`${API_BASE}/reoptimize`, payload);
   return res.data;

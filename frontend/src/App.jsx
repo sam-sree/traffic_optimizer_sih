@@ -6,7 +6,7 @@ import ParetoExplorer from './components/ParetoExplorer';
 import ReoptimizationPanel from './components/ReoptimizationPanel';
 import BenchmarkSummary from './components/BenchmarkSummary';
 import OptimizationResults from './components/OptimizationResults';
-import { fetchGraphData, runSolve } from './api';
+import { fetchGraphData, runSolve, runSolveFromCsv } from './api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('map');
@@ -46,13 +46,31 @@ export default function App() {
     }
   };
 
+  const handleSolveFromCsv = async (file, options) => {
+    setLoading(true);
+    setApiError('');
+    try {
+      const sol = await runSolveFromCsv(file, options);
+      setSolution(sol);
+      return sol;
+    } catch (err) {
+      console.error('CSV solve failed:', err);
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+      const detailText = typeof detail === 'object' ? JSON.stringify(detail.errors || detail) : detail;
+      setApiError(detailText ? `Order import failed (${status ?? 'error'}): ${detailText}` : `Backend disconnected: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="app-shell">
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} connected={Boolean(graphData)} />
 
       <main className="content">
         {activeTab === 'map' && (
-          <MapView graphData={graphData} solution={solution} onSolve={handleSolve} loading={loading} error={apiError} appliedScenario={appliedScenario} />
+          <MapView graphData={graphData} solution={solution} onSolve={handleSolve} onSolveFromCsv={handleSolveFromCsv} loading={loading} error={apiError} appliedScenario={appliedScenario} />
         )}
         {activeTab === 'results' && <OptimizationResults solution={solution} graphData={graphData} />}
         {activeTab === 'convergence' && <ConvergenceChart solution={solution} />}

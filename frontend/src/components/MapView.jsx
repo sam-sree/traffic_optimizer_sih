@@ -4,7 +4,7 @@ import { Play, RefreshCw } from 'lucide-react';
 
 const COLORS = ['#3020ad', '#168a7a', '#de7b27', '#b64070', '#3976bd', '#6f52a0'];
 
-export default function MapView({ graphData, solution, onSolve, loading, error, appliedScenario }) {
+export default function MapView({ graphData, solution, onSolve, onSolveFromCsv, loading, error, appliedScenario }) {
   const [selectedAlgorithm, setSelectedAlgorithm] = useState('Hybrid QPSO + Exact-Cluster');
   const [deliveryNodes, setDeliveryNodes] = useState(20);
   const [vehicleFleet, setVehicleFleet] = useState(5);
@@ -13,6 +13,7 @@ export default function MapView({ graphData, solution, onSolve, loading, error, 
   const [maxDistance, setMaxDistance] = useState(150);
   const [priorityWeight, setPriorityWeight] = useState(0.85);
   const [distanceSensitivity, setDistanceSensitivity] = useState(1.2);
+  const [csvFile, setCsvFile] = useState(null);
 
   useEffect(() => {
     if (!appliedScenario) return;
@@ -32,6 +33,17 @@ export default function MapView({ graphData, solution, onSolve, loading, error, 
     distance_sensitivity: Number(distanceSensitivity)
   });
 
+  const handleCsvUploadClick = () => {
+    if (!csvFile) return;
+    onSolveFromCsv(csvFile, {
+      solverName: selectedAlgorithm,
+      numVehicles: Number(vehicleFleet),
+      vehicleCapacity: Number(vehicleCapacity),
+      depotLat: 12.9786,
+      depotLon: 77.5825
+    });
+  };
+
   return (
     <div className="route-workspace">
       <div className="page-head"><div><h2>Route Visualizer</h2><p>Configure a vehicle routing problem and inspect optimized delivery routes.</p></div></div>
@@ -47,6 +59,28 @@ export default function MapView({ graphData, solution, onSolve, loading, error, 
           <div className="range-field"><div><label htmlFor="sensitivity">Distance Sensitivity</label><span>{distanceSensitivity.toFixed(2)}</span></div><input id="sensitivity" type="range" min="0.5" max="3" step="0.1" value={distanceSensitivity} onChange={event => setDistanceSensitivity(Number(event.target.value))} /></div>
           {error && <div className="error-banner" role="alert">{error}</div>}
           <button className="execute-btn" onClick={executeRouteOptimization} disabled={loading}>{loading ? <><RefreshCw className="spin" size={16} />Optimizing Routes...</> : <><Play size={16} />Execute Route Optimization</>}</button>
+          <hr className="form-rule" />
+          <div className="field">
+            <label htmlFor="csv-upload">Or Upload Today's Orders (CSV)</label>
+            <input id="csv-upload" type="file" accept=".csv" onChange={event => setCsvFile(event.target.files?.[0] || null)} />
+            <small style={{ display: 'block', marginTop: '4px', opacity: 0.7 }}>
+              Columns: name, latitude, longitude, demand_units (optional: ready_time_min, due_time_min, service_time_min)
+            </small>
+          </div>
+          <button className="execute-btn" onClick={handleCsvUploadClick} disabled={loading || !csvFile}>{loading ? <><RefreshCw className="spin" size={16} />Processing Orders...</> : <><Play size={16} />Optimize Uploaded Orders</>}</button>
+          {solution?.csv_import_report && (
+            <div className="field">
+              <small>
+                {solution.csv_import_report.rows_imported} orders imported
+                {solution.csv_import_report.rows_skipped > 0 && `, ${solution.csv_import_report.rows_skipped} skipped`}
+              </small>
+              {solution.csv_import_report.errors.length > 0 && (
+                <ul style={{ fontSize: '0.75rem', color: '#c0392b', marginTop: '4px' }}>
+                  {solution.csv_import_report.errors.map((e, i) => <li key={i}>{e}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
           {solution && <div className="solution-summary"><div className="solution-summary-head"><strong>Latest solution</strong><span className={solution.is_feasible ? 'solution-valid' : 'solution-review'}>{solution.is_feasible ? 'Feasible' : 'Review'}</span></div><div className="solution-metrics"><div><small>Total cost</small><b>{solution.total_cost?.toFixed?.(2) ?? solution.total_cost}</b></div><div><small>Route time</small><b>{solution.total_time_min?.toFixed?.(1) ?? '-'} min</b></div><div><small>Distance</small><b>{solution.total_distance_km?.toFixed?.(1) ?? '-'} km</b></div></div><div className="vehicle-colors">{solution.routes?.map((route, index) => <span key={route.vehicle_id ?? index}><i style={{ background: COLORS[index % COLORS.length] }} />Vehicle {route.vehicle_id}</span>)}</div></div>}
         </section>
         <section className="map-panel" aria-label="Interactive route map">
