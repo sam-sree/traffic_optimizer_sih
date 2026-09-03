@@ -352,6 +352,21 @@ class HybridQuantumOrchestrator(BaseSolver):
         iterations = min(self.qpso_iterations, max(20, dim * 8))
 
         positions = initialize_swarm(num_particles, dim)
+
+        # Guarantee at least one deterministic, well-known-good candidate is
+        # always tried: First-Fit-Decreasing (largest-demand clusters placed
+        # first). Pure random-order first-fit (what the rest of the swarm
+        # does) can fail to pack everything even when total capacity is
+        # genuinely sufficient, purely due to unlucky ordering - FFD is a
+        # standard bin-packing heuristic that succeeds far more often, and
+        # this ensures the final result isn't left to chance when a feasible
+        # packing actually exists.
+        demands_desc_order = sorted(range(dim), key=lambda i: -cluster_info[cluster_ids[i]]["demand"])
+        ffd_position = np.zeros(dim)
+        for rank, cluster_idx in enumerate(demands_desc_order):
+            ffd_position[cluster_idx] = rank
+        positions[0] = ffd_position
+
         p_bests = np.copy(positions)
         p_best_costs = np.full(num_particles, float('inf'))
         g_best = None
